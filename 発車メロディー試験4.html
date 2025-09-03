@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>発車メロディー WebSerial サンプル</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+  h1 { text-align: center; }
+  .container { max-width: 500px; margin: auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  label { display: block; margin-top: 15px; }
+  select { width: 100%; padding: 8px; margin-top: 5px; }
+  #status { margin-top: 20px; font-weight: bold; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>発車メロディー WebSerial</h1>
+
+  <!-- メロディー選択 -->
+  <label for="melodySelect">メロディー選択：</label>
+  <select id="melodySelect">
+    <option value="(H1)首都圏12番　IKST-013-02＠上野.mp3">首都圏12番</option>
+    <option value="kyusyu_sinkansen_basic_hassya.mp3">九州新幹線</option>
+  </select>
+
+  <!-- 放送選択 -->
+  <label for="announceSelect">発車放送選択：</label>
+  <select id="announceSelect">
+    <option value="(H1)半自動ドア扱い放送＠平塚.mp3">半自動放送</option>
+    <option value="announce2.mp3">✖</option>
+    <option value="announce3.mp3">✖</option>
+  </select>
+
+  <button id="connectBtn">USBシリアルに接続</button>
+  <div id="status">未接続</div>
+</div>
+
+<audio id="melodyAudio" loop></audio>
+<audio id="announceAudio"></audio>
+
+<script>
+let port;
+let melodyAudio = document.getElementById('melodyAudio');
+let announceAudio = document.getElementById('announceAudio');
+let dsrState = false;
+let checkInterval;
+
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 9600 });
+    document.getElementById('status').textContent = '接続中…';
+
+    checkInterval = setInterval(async () => {
+      let signals = await port.getSignals();
+      if(signals.dsr !== dsrState){
+        dsrState = signals.dsr;
+        updateAudio();
+      }
+      document.getElementById('status').textContent = `DSR: ${dsrState ? 'ON' : 'OFF'}`;
+    }, 100);
+  } catch(e) {
+    alert('接続に失敗しました: ' + e);
+  }
+});
+
+function updateAudio() {
+  if(dsrState){
+    // DSR ON → メロディー再生
+    announceAudio.pause();
+    melodyAudio.src = document.getElementById('melodySelect').value;
+    melodyAudio.play();
+  } else {
+    // DSR OFF → メロディー停止、1秒後に発車放送
+    melodyAudio.pause();
+    setTimeout(() => {
+      announceAudio.src = document.getElementById('announceSelect').value;
+      announceAudio.play();
+    }, 1000);
+  }
+}
+
+// 選択変更時に即反映
+document.getElementById('melodySelect').addEventListener('change', () => {
+  if(dsrState){
+    melodyAudio.src = document.getElementById('melodySelect').value;
+    melodyAudio.play();
+  }
+});
+
+document.getElementById('announceSelect').addEventListener('change', () => {
+  if(!dsrState){
+    announceAudio.src = document.getElementById('announceSelect').value;
+  }
+});
+</script>
+</body>
+</html>
