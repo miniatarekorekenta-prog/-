@@ -2,7 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>発車メロディー</title>
+  <title>発車メロディー + USBスイッチ</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    h1 { font-size: 2em; margin-bottom: 20px; }
+    label { font-weight: bold; margin-right: 10px; }
+    select { margin-bottom: 20px; }
+    #status { margin-top: 20px; font-weight: bold; }
+  </style>
 </head>
 <body>
   <h1>発車ベル</h1>
@@ -10,50 +17,89 @@
   <!-- メロディー選択 -->
   <label for="melodySelect">メロディー選択：</label>
   <select id="melodySelect">
-    <option value="melody/(H1)首都圏12番　IKST-013-02＠上野.mp3">首都圏12番</option>
-    <option value="melody/kyusyu_sinkansen_basic_hassya.mp3">九州新幹線</option>
+    <option value="melody/shutoken12.mp3">首都圏12番</option>
+    <option value="melody/kyusyu_shinkansen.mp3">九州新幹線</option>
   </select>
 
-  <br><br>
+  <br>
 
   <!-- 放送選択 -->
   <label for="announceSelect">発車放送選択：</label>
   <select id="announceSelect">
-    <option value="announce/(H1)半自動ドア扱い放送＠平塚.mp3">半自動放送</option>
-    <option value="announce/announce2.mp3">✖</option>
-    <option value="announce/announce3.mp3">✖</option>
+    <option value="announce/hanjidou.mp3">半自動放送</option>
+    <option value="announce/announce2.mp3">放送2</option>
+    <option value="announce/announce3.mp3">放送3</option>
   </select>
 
-  <br><br>
+  <br>
 
-  <button id="playMelody">メロディー再生</button>
-  <button id="stopMelody">停止 + 発車放送</button>
+  <button id="connectSerial">USBスイッチ接続</button>
+  <p id="status">未接続</p>
 
   <audio id="melodyAudio" loop></audio>
   <audio id="announceAudio"></audio>
 
   <script>
-    const melodySelect = document.getElementById('melodySelect');
-    const announceSelect = document.getElementById('announceSelect');
+    const connectButton = document.getElementById('connectSerial');
+    const statusText = document.getElementById('status');
     const melodyAudio = document.getElementById('melodyAudio');
     const announceAudio = document.getElementById('announceAudio');
-    const playButton = document.getElementById('playMelody');
-    const stopButton = document.getElementById('stopMelody');
+    const melodySelect = document.getElementById('melodySelect');
+    const announceSelect = document.getElementById('announceSelect');
 
-    playButton.addEventListener('click', () => {
-      melodyAudio.src = melodySelect.value;
-      melodyAudio.play();
+    let port;
+    let reader;
+    let keepReading = false;
+
+    connectButton.addEventListener('click', async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+
+        statusText.textContent = "接続中...";
+        keepReading = true;
+
+        await port.setSignals({ dataTerminalReady: true }); // DTR ON
+
+        readLoop();
+
+      } catch (err) {
+        console.error(err);
+        statusText.textContent = "接続失敗";
+      }
     });
 
-    stopButton.addEventListener('click', () => {
-      melodyAudio.pause();
-      melodyAudio.currentTime = 0;
-      // 1秒後に発車放送再生
-      setTimeout(() => {
-        announceAudio.src = announceSelect.value;
-        announceAudio.play();
-      }, 1000);
-    });
+    async function readLoop() {
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      reader = decoder.readable.getReader();
+
+      while (keepReading) {
+        try {
+          const signals = await port.getSignals();
+          if (signals.dataSetReady) { // DSR ON
+            if (melodyAudio.paused) {
+              melodyAudio.src = melodySelect.value;
+              melodyAudio.play();
+              statusText.textContent = "DSR ON - メロディー再生中";
+            }
+          } else { // DSR OFF
+            if (!melodyAudio.paused) {
+              melodyAudio.pause();
+              melodyAudio.currentTime = 0;
+              statusText.textContent = "DSR OFF - 発車放送1秒後再生";
+              setTimeout(() => {
+                announceAudio.src = announceSelect.value;
+                announceAudio.play();
+              }, 1000);
+            }
+          }
+        } catch (err) {
+          console.error(err);
+          statusText.textContent = "読み取りエラー";
+        }
+      }
+    }
   </script>
 </body>
 </html>
