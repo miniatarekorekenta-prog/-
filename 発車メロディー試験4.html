@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>発車メロディー</title>
+</head>
+<body>
+  <h1>発車ベル</h1>
+
+  <!-- メロディー選択 -->
+  <label for="melodySelect">メロディー選択：</label>
+  <select id="melodySelect">
+    <option value="melody/(H1)首都圏12番　IKST-013-02＠上野.mp3">首都圏12番</option>
+    <option value="melody/kyusyu_sinkansen_basic_hassya.mp3">九州新幹線</option>
+  </select>
+
+  <br><br>
+
+  <!-- 放送選択 -->
+  <label for="announceSelect">発車放送選択：</label>
+  <select id="announceSelect">
+    <option value="announce/(H1)半自動ドア扱い放送＠平塚.mp3">半自動放送</option>
+    <option value="announce/announce2.mp3">✖</option>
+    <option value="announce/announce3.mp3">✖</option>
+  </select>
+
+  <br><br>
+
+  <button id="playMelody">メロディー再生</button>
+  <button id="stopMelody">停止 + 発車放送</button>
+
+  <audio id="melodyAudio" loop></audio>
+  <audio id="announceAudio"></audio>
+
+  <script>
+    const melodySelect = document.getElementById('melodySelect');
+    const announceSelect = document.getElementById('announceSelect');
+    const melodyAudio = document.getElementById('melodyAudio');
+    const announceAudio = document.getElementById('announceAudio');
+    const playButton = document.getElementById('playMelody');
+    const stopButton = document.getElementById('stopMelody');
+
+    playButton.addEventListener('click', () => {
+      melodyAudio.src = melodySelect.value;
+      melodyAudio.play();
+    });
+
+    stopButton.addEventListener('click', () => {
+      melodyAudio.pause();
+      melodyAudio.currentTime = 0;
+      // 1秒後に発車放送再生
+      setTimeout(() => {
+        announceAudio.src = announceSelect.value;
+        announceAudio.play();
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
