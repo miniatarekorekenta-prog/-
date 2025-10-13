@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>発車メロディー第一完成版</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #f4f4f4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    h1 { margin-bottom: 20px; }
+
+    .controls { margin: 10px 0; text-align: center; }
+    label { font-weight: bold; margin-right: 10px; }
+
+    #status {
+      margin-top: 20px;
+      font-size: 2em;
+      font-weight: bold;
+      padding: 20px;
+      width: 300px;
+      text-align: center;
+      border-radius: 8px;
+      box-shadow: 0px 4px 8px rgba(0,0,0,0.3);
+    }
+
+    .on { color: black; background: lime; }
+    .off { color: red; background: black; }
+    .error { color: yellow; background: black; }
+
+    button {
+      margin: 20px;
+      padding: 10px 20px;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      background: #0078d7;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background: #005fa3; }
+  </style>
+</head>
+<body>
+  <h1>【実機】発車メロディー第一完成版</h1>
+
+  <!-- メロディ音源 -->
+  <div class="controls">
+    <label for="melodyMode">メロディ音源モード：</label>
+    <select id="melodyMode">
+      <option value="default">デフォルト音源</option>
+      <option value="file">選択音源</option>
+    </select>
+  </div>
+  <div class="controls" id="melodyDefaultControls">
+    <label for="melodySelect">デフォルト音源：</label>
+    <select id="melodySelect">
+      <option value="(H1)首都圏12番　IKST-013-02＠上野.mp3">首都圏12番</option>
+      <option value="kyusyu_sinkansen_basic_hassya.mp3">九州新幹線</option>
+      <option value="(H1)藤沢市歌4番線＠藤沢.mp3">藤沢市歌4番線＠藤沢</option>
+    </select>
+  </div>
+  <div class="controls" id="melodyFileControls" style="display:none;">
+    <label for="melodyFile">選択音源：</label>
+    <input type="file" id="melodyFile" accept="audio/*">
+  </div>
+  <div class="controls">
+    <label for="melodyVolume">メロディ音量：</label>
+    <input type="range" id="melodyVolume" min="0" max="1" step="0.05" value="1">
+  </div>
+
+  <!-- 発車放送音源 -->
+  <div class="controls">
+    <label for="announceMode">発車放送音源モード：</label>
+    <select id="announceMode">
+      <option value="default">デフォルト音源</option>
+      <option value="file">選択音源</option>
+    </select>
+  </div>
+  <div class="controls" id="announceDefaultControls">
+    <label for="announceSelect">デフォルト音源：</label>
+    <select id="announceSelect">
+      <option value="戸閉放送_男声8番英語.mp3">8番線</option>
+      <option value="">使用不可</option>
+    </select>
+  </div>
+  <div class="controls" id="announceFileControls" style="display:none;">
+    <label for="announceFile">選択音源：</label>
+    <input type="file" id="announceFile" accept="audio/*">
+  </div>
+  <div class="controls">
+    <label for="announceVolume">発車放送音量：</label>
+    <input type="range" id="announceVolume" min="0" max="1" step="0.05" value="1">
+  </div>
+
+  <button id="connectSerial">USB実機スイッチ接続</button>
+  <p id="status" class="off">未接続</p>
+
+  <audio id="melodyAudio" loop></audio>
+  <audio id="announceAudio"></audio>
+
+<script>
+  const connectButton = document.getElementById('connectSerial');
+  const statusText = document.getElementById('status');
+  const melodyAudio = document.getElementById('melodyAudio');
+  const announceAudio = document.getElementById('announceAudio');
+
+  const melodyMode = document.getElementById('melodyMode');
+  const melodyDefaultControls = document.getElementById('melodyDefaultControls');
+  const melodyFileControls = document.getElementById('melodyFileControls');
+  const melodySelect = document.getElementById('melodySelect');
+  const melodyFile = document.getElementById('melodyFile');
+  const melodyVolume = document.getElementById('melodyVolume');
+
+  const announceMode = document.getElementById('announceMode');
+  const announceDefaultControls = document.getElementById('announceDefaultControls');
+  const announceFileControls = document.getElementById('announceFileControls');
+  const announceSelect = document.getElementById('announceSelect');
+  const announceFile = document.getElementById('announceFile');
+  const announceVolume = document.getElementById('announceVolume');
+
+  let port;
+  let keepReading = false;
+  let melodyFileURL = null;
+  let announceFileURL = null;
+
+  let offTimeout = null;      // OFF判定保留用
+  let announceTimeout = null; // 発車放送用
+  let wasOn = false;          // 前回の状態（ONだったかどうか）
+
+  // 音量調整
+  melodyVolume.addEventListener('input', ()=>{ melodyAudio.volume = melodyVolume.value; });
+  announceVolume.addEventListener('input', ()=>{ announceAudio.volume = announceVolume.value; });
+
+  // ファイル選択
+  melodyFile.addEventListener('change', e=>{
+    if(e.target.files.length>0) melodyFileURL = URL.createObjectURL(e.target.files[0]);
+  });
+  announceFile.addEventListener('change', e=>{
+    if(e.target.files.length>0) announceFileURL = URL.createObjectURL(e.target.files[0]);
+  });
+
+  // モード切替
+  melodyMode.addEventListener('change', ()=>{
+    melodyDefaultControls.style.display = (melodyMode.value==='default')?'block':'none';
+    melodyFileControls.style.display = (melodyMode.value==='file')?'block':'none';
+  });
+  announceMode.addEventListener('change', ()=>{
+    announceDefaultControls.style.display = (announceMode.value==='default')?'block':'none';
+    announceFileControls.style.display = (announceMode.value==='file')?'block':'none';
+  });
+
+  connectButton.addEventListener('click', async ()=>{
+    try{
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate:9600 });
+      statusText.textContent="接続完了"; statusText.className="off";
+      keepReading = true;
+      await port.setSignals({ dataTerminalReady:true });
+      readLoop();
+    } catch(err){
+      console.error(err);
+      statusText.textContent="接続失敗"; statusText.className="error";
+    }
+  });
+
+  async function readLoop(){
+    while(keepReading){
+      try{
+        const signals = await port.getSignals();
+        if(signals.dataSetReady){ // DSR ON
+          if(offTimeout){ clearTimeout(offTimeout); offTimeout=null; }
+          if(announceTimeout){ clearTimeout(announceTimeout); announceTimeout=null; }
+
+          if(melodyAudio.paused){
+            melodyAudio.src = (melodyMode.value==='default') ? melodySelect.value : melodyFileURL;
+            melodyAudio.play();
+          }
+          statusText.textContent="ON";
+          statusText.className="on";
+          wasOn = true;  // ON状態を記録
+
+        } else { // DSR OFF
+          if(!offTimeout){
+            offTimeout = setTimeout(()=>{
+              melodyAudio.pause();
+              melodyAudio.currentTime=0;
+              statusText.textContent="OFF";
+              statusText.className="off";
+
+              // 直前がONだった場合のみ、発車放送を再生
+              if(wasOn){
+                announceTimeout = setTimeout(()=>{
+                  const announceSrc = (announceMode.value==='default') ? announceSelect.value : announceFileURL;
+                  if(announceSrc){
+                    announceAudio.src = announceSrc;
+                    announceAudio.play();
+                  }
+                },0);
+              }
+
+              wasOn = false; // OFF確定
+              offTimeout = null;
+            },250); // 0.25秒保留
+          }
+        }
+      } catch(err){
+        console.error(err);
+        statusText.textContent="読み取りエラー";
+        statusText.className="error";
+      }
+    }
+  }
+</script>
+
+</body>
+</html>
